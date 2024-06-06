@@ -7,6 +7,7 @@ use nom::{
     number::complete::float,
     sequence::{delimited, preceded, tuple},
     Finish, IResult,
+    error::{Error, ErrorKind, ParseError}
 };
 use serde::Serialize;
 use std::str::FromStr;
@@ -92,6 +93,10 @@ fn parse_kp_forecast(input: &str) -> IResult<&str, Vec<KPForecast>> {
 
     let mut results = Vec::new();
     for (_, time_range_end, kps) in rows {
+        if kps.len() != dates.len() {
+            let errmsg: &str = "Number of dates are not correspond to number of found values";
+            return Err(nom::Err::Error(Error::from_error_kind(errmsg, ErrorKind::Fail)));
+        }
         for (index, kp) in kps.into_iter().enumerate() {
             let date = &dates[index];
             results.push(KPForecast {
@@ -154,6 +159,10 @@ fn parse_srs_rb_forecast<'a>(input: &'a str, header_phrase: &str, storm_type: ch
 
     let mut results: Vec<SRSRBForecast> = Vec::new();
     for (s_min, s_max, values) in rows {
+        if values.len() != dates.len() {
+            let errmsg: &str = "Number of dates are not correspond to number of found values";
+            return Err(nom::Err::Error(Error::from_error_kind(errmsg, ErrorKind::Fail)));
+        }
         for (index, value) in values.into_iter().enumerate() {
             let date = &dates[index];
             // find in results record with same date and use it or create new one if it don't exists
@@ -344,5 +353,137 @@ activity primarily from AR 3654 are likely on 01 May.
             assert_eq!(rb_forecast1[i].s4, data[i].s4);
             assert_eq!(rb_forecast1[i].s5, data[i].s5);
         }
+    }
+
+    #[test]
+    fn test_parse_kp_fct_fail_result() {
+        let wrong_text:&str = "
+        The greatest observed 3 hr Kp over the past 24 hours was 4 (below NOAA
+        Scale levels).
+        The greatest expected 3 hr Kp for May 01-May 03 2024 is 4.67 (NOAA Scale
+        G1).";
+        let result = parse_kp_forecast(wrong_text).finish();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_kp_fct_ok_incomplete_data1() {
+        let incomplete_text:&str = "
+NOAA Kp index breakdown May 01-May 03 2024
+
+            May 01       May 02       May 03
+00-03UT       4.67 (G1)    3.67         3.67     
+03-06UT       4.00         4.00         3.33     
+
+        ";
+        let kp_forecast: Vec<KPForecast> = vec![
+            KPForecast { date: "May 01 2024".to_string(), hour: 3, value: 4.67 },
+            KPForecast { date: "May 01 2024".to_string(), hour: 6, value: 4.0 },
+
+            KPForecast { date: "May 02 2024".to_string(), hour: 3, value: 3.67 },
+            KPForecast { date: "May 02 2024".to_string(), hour: 6, value: 4.0 },
+
+            KPForecast { date: "May 03 2024".to_string(), hour: 3, value: 3.67 },
+            KPForecast { date: "May 03 2024".to_string(), hour: 6, value: 3.33 },
+        ];
+        let (_, kp_data) = parse_kp_forecast(incomplete_text).finish().unwrap();
+        for i in 0..kp_forecast.len() {
+            assert_eq!(kp_forecast[i].date, kp_data[i].date);
+            assert_eq!(kp_forecast[i].hour, kp_data[i].hour);
+            assert_eq!(kp_forecast[i].value, kp_data[i].value);
+        }
+    }
+
+    #[test]
+    fn test_parse_kp_fct_ok_incomplete_data2() {
+        let incomplete_text:&str = "
+NOAA Kp index breakdown May 01-May 03 2024
+
+             May 01       May 02
+00-03UT       4.67 (G1)    3.67
+03-06UT       4.00         4.00
+06-09UT       3.00         3.67
+09-12UT       2.33         3.33
+12-15UT       2.67         6.00 (G2)
+15-18UT       2.33         2.67
+18-21UT       3.00         3.67
+21-00UT       3.33         3.67
+
+";
+        let kp_forecast: Vec<KPForecast> = vec![
+            KPForecast { date: "May 01 2024".to_string(), hour: 3, value: 4.67 },
+            KPForecast { date: "May 01 2024".to_string(), hour: 6, value: 4.0 },
+            KPForecast { date: "May 01 2024".to_string(), hour: 9, value: 3.0 },
+            KPForecast { date: "May 01 2024".to_string(), hour: 12, value: 2.33 },
+            KPForecast { date: "May 01 2024".to_string(), hour: 15, value: 2.67 },
+            KPForecast { date: "May 01 2024".to_string(), hour: 18, value: 2.33 },
+            KPForecast { date: "May 01 2024".to_string(), hour: 21, value: 3.00 },
+            KPForecast { date: "May 01 2024".to_string(), hour: 0, value: 3.33 },
+
+            KPForecast { date: "May 02 2024".to_string(), hour: 3, value: 3.67 },
+            KPForecast { date: "May 02 2024".to_string(), hour: 6, value: 4.0 },
+            KPForecast { date: "May 02 2024".to_string(), hour: 9, value: 3.67 },
+            KPForecast { date: "May 02 2024".to_string(), hour: 12, value: 3.33 },
+            KPForecast { date: "May 02 2024".to_string(), hour: 15, value: 6.0 },
+            KPForecast { date: "May 02 2024".to_string(), hour: 18, value: 2.67 },
+            KPForecast { date: "May 02 2024".to_string(), hour: 21, value: 3.67 },
+            KPForecast { date: "May 02 2024".to_string(), hour: 0, value: 3.67 },
+        ];
+        let (_, kp_data) = parse_kp_forecast(incomplete_text).finish().unwrap();
+        for i in 0..kp_forecast.len() {
+            assert_eq!(kp_forecast[i].date, kp_data[i].date);
+            assert_eq!(kp_forecast[i].hour, kp_data[i].hour);
+            assert_eq!(kp_forecast[i].value, kp_data[i].value);
+        }
+    }
+
+    #[test]
+    fn test_parse_kp_fct_fail_incorrect_data2() {
+        let wrong_text:&str = "
+NOAA Kp index breakdown May 01-May 03 2024
+
+             May 01       May 02       May 03
+00-03UT       4.67 (G1)    3.67         3.67     
+03-06UT       4.o0         4.00         3.33     
+
+    ";
+        let result = parse_kp_forecast(wrong_text).finish();
+        assert!(result.is_err());
+        println!("{result:?}");
+        assert_eq!(result.unwrap_err(),
+                   Error::from_error_kind("Number of dates are not correspond to number of found values",
+                                          ErrorKind::Fail
+                   )
+        );
+    }
+
+    #[test]
+    fn test_parse_srs_fct_fail_result() {
+        let wrong_text:&str = "
+        The greatest observed 3 hr Kp over the past 24 hours was 4 (below NOAA
+        Scale levels).
+        The greatest expected 3 hr Kp for May 01-May 03 2024 is 4.67 (NOAA Scale
+        G1).";
+        let result = parse_srs_forecast(wrong_text).finish();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_srs_fct_fail_incorrect_data1() {
+        let wrong_text:&str = "
+        Solar Radiation Storm Forecast for May 01-May 03 2024
+
+        May 01  May 02  May 03
+S1 or greater    5%      5o%      5%
+
+    ";
+        let result = parse_srs_forecast(wrong_text).finish();
+        assert!(result.is_err());
+        println!("{result:?}");
+        assert_eq!(result.unwrap_err(),
+                   Error::from_error_kind("Number of dates are not correspond to number of found values",
+                                          ErrorKind::Fail
+                   )
+        );
     }
 }
