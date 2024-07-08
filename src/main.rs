@@ -163,29 +163,29 @@ async fn main() {
         transmitter: mqtt
     };
 
-    // let repeater = TRepeater {
-    //     provider: wprovider,
-    //     sources: weather_sources.into()
-    // }
+    for source in weather_sources.iter() {
+        wprovider.provide(source).await.ok();
+    }
 
     let wprovider_ref = Arc::new(wprovider);
-
     for source in weather_sources {
-        let wprovider_ref2 = wprovider_ref.clone();
-        let ws = source;
-        let handler = task::spawn(async move {
-            let mut interval = interval(Duration::from_secs(ws.request_interval_s.into()));
-            loop {
-                interval.tick().await;
-                // TODO: limit max time for loading and sending
-                let result = wprovider_ref2.provide(&ws).await;
-                match result {
-                    // TODO: error handling
-                    Err(e) => println!("Error during providing source {}: {}", ws.mqtt_topic_name, e),
-                    Ok(_) => {}
-                }
-            }
-        });
-        tokio::try_join!(handler).unwrap();
+        start_task(wprovider_ref.clone(), source).await;
     }
+}
+
+async fn start_task(wprovider_ref: Arc<TWeatherProvider>, ws: TWeatherSource) {
+    let handler = task::spawn(async move {
+        let mut interval = interval(Duration::from_secs(ws.request_interval_s.into()));
+        loop {
+            interval.tick().await;
+            // TODO: limit max time for loading and sending
+            let result = wprovider_ref.provide(&ws).await;
+            match result {
+                // TODO: error handling
+                Err(e) => println!("Error during providing weather source {}: {}", ws.mqtt_topic_name, e),
+                Ok(_) => {}
+            }
+        }
+    });
+    tokio::try_join!(handler).unwrap();
 }

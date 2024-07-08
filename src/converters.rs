@@ -17,16 +17,16 @@ struct KpInst {
     time_tag: String,
     kp_index: f32,
     #[serde(skip_deserializing)]
-    estimated_kp: f32,
+    _estimated_kp: f32,
     #[serde(skip_deserializing)]
-    kp: String,
+    _kp: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]
 struct ProtonFlux {
     time_tag: String,
     #[serde(skip_deserializing)]
-    satellite: u8,
+    _satellite: u8,
     flux: f32,
     energy: String,
 }
