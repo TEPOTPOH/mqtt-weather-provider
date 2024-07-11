@@ -139,15 +139,15 @@ pub fn converter_flux(raw_text: String) -> Result::<String, String> {
 pub fn converter_sw_forecast(raw_text: String) -> Result::<String, String> {
     let sw_data = parse_sw_forecast(raw_text.as_str())?;
 
-    for kp_data in &sw_data.kp {
-        println!("Date: {}, Time end: {}, Kp: {}", kp_data.date, kp_data.hour, kp_data.value);
-    }
-    for srs_data in &sw_data.srs {
-        println!("Date: {}, S1: {}, S2: {}, S3: {}, S4: {}, S5: {}", srs_data.date, srs_data.s1, srs_data.s2, srs_data.s3, srs_data.s4, srs_data.s5);
-    }
-    for rb_data in &sw_data.rb {
-        println!("Date: {}, R1: {}, R2: {}, R3: {}, R4: {}, R5: {}", rb_data.date, rb_data.s1, rb_data.s2, rb_data.s3, rb_data.s4, rb_data.s5);
-    }
+    // for kp_data in &sw_data.kp {
+    //     println!("Date: {}, Time end: {}, Kp: {}", kp_data.date, kp_data.hour, kp_data.value);
+    // }
+    // for srs_data in &sw_data.srs {
+    //     println!("Date: {}, S1: {}, S2: {}, S3: {}, S4: {}, S5: {}", srs_data.date, srs_data.s1, srs_data.s2, srs_data.s3, srs_data.s4, srs_data.s5);
+    // }
+    // for rb_data in &sw_data.rb {
+    //     println!("Date: {}, R1: {}, R2: {}, R3: {}, R4: {}, R5: {}", rb_data.date, rb_data.s1, rb_data.s2, rb_data.s3, rb_data.s4, rb_data.s5);
+    // }
 
     serde_json::to_string(&sw_data).map_err(|e| format!("serilisation error: {e}"))
 }

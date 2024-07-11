@@ -25,12 +25,12 @@ struct TWeatherSource {
 }
 
 struct TWeatherProvider {
-    // sources: Vec<TWeatherSource>,
     transmitter: TMQTTransmitter,
 }
 
 impl TWeatherProvider {
     async fn provide(&self, source: &TWeatherSource) -> Result::<(), String> {
+        println!("\tProviding weather source {}", source.mqtt_topic_name);
         let raw_data = self.load_text(source).await.map_err(|e: Error| format!("HTTP reqwest error: {e}"))?;
         let payload = (source.convert)(raw_data)?;
         self.send(source, payload).await
@@ -57,33 +57,36 @@ struct TMQTTransmitter {
 }
 
 impl TMQTTransmitter {
-    fn init(settings: TMQTTSettings) -> Result<Self, String> {
+    fn new(settings: TMQTTSettings) -> Result<(Self, task::JoinHandle<()>), String> {
         let mut mqttoptions = MqttOptions::new(settings.name, &settings.config.mqtt_host, settings.config.mqtt_port);
         mqttoptions.set_keep_alive(Duration::from_secs(settings.config.mqtt_keep_alive.into()));
         println!("Connecting to MQTT broker...");
         let (client, mut connection) = Client::new(mqttoptions, 10);
 
-        let transmitter = Self { settings: settings, client: Arc::new(Mutex::new(client)) };
+        let transmitter = Self { settings: settings, client: Arc::new(Mutex::new(client))};
 
         println!("Spawn Connection handler thread");
         // Connection handler thread
-        task::spawn_blocking( move || {
+        let handler = task::spawn_blocking( move || {
             println!("Connection handler thread spawned");
             loop {
                 // The `EventLoop`/`Connection` must be regularly polled(`.next()` in case of `Connection`) in order
                 // to send, receive and process packets from the broker, i.e. move ahead.
                 for (_, notification) in connection.iter().enumerate() {
-                    println!("Notification = {:?}", notification);
+                    if notification.is_err() {
+                        notification.expect("MQTT connection error: ");
+                    }
                 }
             }
         });
-        return Ok(transmitter);
+
+        return Ok((transmitter, handler));
     }
 
     async fn send_to_broker(&self, topic: &str, payload: String) -> Result<(), String> {
         let full_topic = Self::make_full_topic(topic, &self.settings.config);
-        println!("MQTT publish topic {} with payload: ", full_topic);
-        println!("{:#}", payload);
+        println!("\tMQTT publish topic {} with payload: ", full_topic);
+        println!("\t\t{:#}", payload);
         let mut mut_client = self.client.lock().expect("Error when locking MQTT client mutex");
         mut_client.publish(full_topic, QoS::AtLeastOnce, false, payload.as_bytes())
             .map_err(|e| format!("MQTT publish error: {e}"))
@@ -152,7 +155,7 @@ async fn main() {
                        },
     ];
 
-    let mqtt = TMQTTransmitter::init(TMQTTSettings {
+    let (mqtt, conn_handler) = TMQTTransmitter::new(TMQTTSettings {
                                         name: "weather-provider",
                                         config: Arc::new(config)
                                     }).unwrap();
@@ -163,29 +166,27 @@ async fn main() {
         transmitter: mqtt
     };
 
-    for source in weather_sources.iter() {
-        wprovider.provide(source).await.ok();
-    }
-
     let wprovider_ref = Arc::new(wprovider);
     for source in weather_sources {
-        start_task(wprovider_ref.clone(), source).await;
+        start_task(wprovider_ref.clone(), source);
     }
+
+    let _ = tokio::join!(conn_handler);
 }
 
-async fn start_task(wprovider_ref: Arc<TWeatherProvider>, ws: TWeatherSource) {
-    let handler = task::spawn(async move {
+fn start_task(wprovider_ref: Arc<TWeatherProvider>, ws: TWeatherSource) {
+    println!("Starting task for weather source {} ...", ws.mqtt_topic_name);
+
+    task::spawn(async move {
+        println!("Done. Task for weather source {} started", ws.mqtt_topic_name);
         let mut interval = interval(Duration::from_secs(ws.request_interval_s.into()));
         loop {
+            println!("\tWaiting... {}\n", ws.mqtt_topic_name);
             interval.tick().await;
             // TODO: limit max time for loading and sending
-            let result = wprovider_ref.provide(&ws).await;
-            match result {
-                // TODO: error handling
-                Err(e) => println!("Error during providing weather source {}: {}", ws.mqtt_topic_name, e),
-                Ok(_) => {}
-            }
+            println!("\tStart providing ws {} ... ", ws.mqtt_topic_name);
+            wprovider_ref.provide(&ws).await.expect(format!("\tError during providing weather source {}", ws.mqtt_topic_name).as_str());
+            println!("\tProvided successfully ws {}", ws.mqtt_topic_name);
         }
     });
-    tokio::try_join!(handler).unwrap();
 }
