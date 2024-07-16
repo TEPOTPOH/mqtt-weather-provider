@@ -126,12 +126,12 @@ struct Config {
 
 #[tokio::main]
 async fn main() {
-    // stack, immutable, all time live, multithreading read access
+    // immutable, all time live, multithreading read access
     let config = Config::init_from_env().unwrap();
 
     println!("Using config:\n{:?}", config);
 
-    // stack/data, immutable, all time live, multithreading read access
+    // immutable, all time live, multithreading read access
     let weather_sources = [
         TWeatherSource { source_url: "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json",
                          mqtt_topic_name: "noaa_kp",
