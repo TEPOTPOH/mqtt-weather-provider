@@ -113,7 +113,7 @@ struct Config {
     #[envconfig(from = "MQTT_BROKER_BASE_TOPIC", default = "homeassistant/sensor")]
     pub mqtt_base_topic: String,
 
-    #[envconfig(from = "MQTT_DEVICE_NAME", default = "unknown")]
+    #[envconfig(from = "MQTT_DEVICE_NAME", default = "cubieboard")]
     pub mqtt_device_name: String,
 
     #[envconfig(from = "KP_RELEASE_INTERVAL_S", default = "600")]   // 10 min
