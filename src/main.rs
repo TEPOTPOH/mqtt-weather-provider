@@ -74,7 +74,8 @@ impl TMQTTransmitter {
                 // to send, receive and process packets from the broker, i.e. move ahead.
                 for (_, notification) in connection.iter().enumerate() {
                     if notification.is_err() {
-                        notification.expect("MQTT connection error: ");
+                        // just print
+                        let _ = notification.inspect_err(|e| println!("MQTT connection error: {e}"));
                     }
                 }
             }
